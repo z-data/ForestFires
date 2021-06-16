@@ -12,6 +12,9 @@ knitr::opts_chunk$set(echo = TRUE)
 
 
 ```{r}
+library(boot)
+library(mltools)
+library(data.table)
 fires = read.csv("ForestFires.csv")
 head(fires)
 ```
@@ -55,4 +58,83 @@ lower = lower.tri(fires_matirx)
 corelation_m
 hist(corelation_m[lower], xlab = 'correlations of lower matrix')
 ```
+
+# In this section I will start actually looking into some regression settings
+
+This is for fires not using X,Y,Day,Month
+```{r}
+fires_lm = fires[,-c(1,2,3,4)]
+#head(fires_lm)
+#fitting the most generic model
+test = sample(nrow(fires_lm), floor(nrow(fires_lm)*.2))
+linear_fit = lm(area~., data = fires_lm[-test,])
+summary(linear_fit)
+
+
+# getting MSE for the test
+pred = predict(linear_fit, fires_lm[test,])
+mean((pred - fires_lm[test, "area"])**2)
+```
+
+
+This is for fires not using Day,Month
+```{r}
+fires_lm = fires[,-c(3,4)]
+#head(fires_lm)
+#fitting the most generic model
+test = sample(nrow(fires_lm), floor(nrow(fires_lm)*.2))
+linear_fit = lm(area~., data = fires_lm[-test,])
+summary(linear_fit)
+
+
+# getting MSE for the test
+pred = predict(linear_fit, fires_lm[test,])
+mean((pred - fires_lm[test, "area"])**2)
+```
+
+
+```{r}
+fires$month = as.factor(fires$month)
+fires$day = as.factor(fires$day)
+newdata = one_hot(as.data.table(fires))
+newdata
+```
+
+```{r}
+test = sample(nrow(fires_lm), floor(nrow(fires_lm)*.2))
+linear_fit = lm(area~., data = newdata[-test,])
+summary(linear_fit)
+
+
+# getting MSE for the test
+pred = predict(linear_fit, newdata[test,])
+mean((pred - fires_lm[test, "area"])**2)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 

@@ -15,6 +15,9 @@ knitr::opts_chunk$set(echo = TRUE)
 library(boot)
 library(mltools)
 library(data.table)
+library(tidyverse)
+library(caret)
+library(leaps)
 fires = read.csv("ForestFires.csv")
 head(fires)
 ```
@@ -67,9 +70,11 @@ fires_lm = fires[,-c(1,2,3,4)]
 #head(fires_lm)
 #fitting the most generic model
 test = sample(nrow(fires_lm), floor(nrow(fires_lm)*.2))
-linear_fit = lm(area~., data = fires_lm[-test,])
+linear_fit = glm(area ~., data = fires_lm[-test,])
 summary(linear_fit)
 
+#10 CV validation for the training set 
+cv.glm(fires_lm[-test,], linear_fit, K = 10)$delta[1]
 
 # getting MSE for the test
 pred = predict(linear_fit, fires_lm[test,])
@@ -83,9 +88,11 @@ fires_lm = fires[,-c(3,4)]
 #head(fires_lm)
 #fitting the most generic model
 test = sample(nrow(fires_lm), floor(nrow(fires_lm)*.2))
-linear_fit = lm(area~., data = fires_lm[-test,])
+linear_fit = glm(area~., data = fires_lm[-test,])
 summary(linear_fit)
 
+#10 CV validation for the training set 
+cv.glm(fires_lm[-test,], linear_fit, K = 10)$delta[1]
 
 # getting MSE for the test
 pred = predict(linear_fit, fires_lm[test,])
@@ -102,9 +109,11 @@ newdata
 
 ```{r}
 test = sample(nrow(fires_lm), floor(nrow(fires_lm)*.2))
-linear_fit = lm(area~., data = newdata[-test,])
+linear_fit = glm(area~., data = newdata[-test,])
 summary(linear_fit)
 
+#10 CV validation for the training set 
+cv.glm(fires_lm[-test,], linear_fit, K = 10)$delta[1]
 
 # getting MSE for the test
 pred = predict(linear_fit, newdata[test,])
@@ -112,18 +121,79 @@ mean((pred - fires_lm[test, "area"])**2)
 ```
 
 
+Trying different sub-selection models now
+```{r}
+# Set seed for reproducibility
+set.seed(123)
+# Set up repeated k-fold cross-validation
+train.control <- trainControl(method = "cv", number = 10)
+# Train the model
+step.model <- train(area ~., data = newdata,
+                    method = "leapForward", 
+                    tuneGrid = data.frame(nvmax = 1:28),
+                    trControl = train.control
+                    )
+step.model$results
+
+step.model$bestTune
+summary(step.model$finalModel)
+```
+
+Usiing the above forward selection method we got that temp was the best forward selection model.  Here is code of us actually checking the MSE for temp
+```{r}
+test = sample(nrow(fires_lm), floor(nrow(fires_lm)*.2))
+linear_fit = glm(area~temp, data = newdata[-test,])
+
+# getting MSE for the test
+pred = predict(linear_fit, newdata[test,])
+mean((pred - fires_lm[test, "area"])**2)
+```
+
+
+```{r}
+
+# Set seed for reproducibility
+set.seed(123)
+# Set up repeated k-fold cross-validation
+train.control <- trainControl(method = "cv", number = 10)
+# Train the model
+step.model <- train(area ~., data = newdata,
+                    method = "leapBackward", 
+                    tuneGrid = data.frame(nvmax = 1:28),
+                    trControl = train.control
+                    )
+step.model$results
+
+step.model$bestTune
+summary(step.model$finalModel)
+```
+
+Temp was also the best selection for backwards selection
 
 
 
+```{r}
+# Set seed for reproducibility
+set.seed(123)
+# Set up repeated k-fold cross-validation
+train.control <- trainControl(method = "cv", number = 10)
+# Train the model
+step.model <- train(area ~., data = newdata,
+                    method = "leapSeq", 
+                    tuneGrid = data.frame(nvmax = 1:10),
+                    trControl = train.control
+                    )
+step.model$results
+
+step.model$bestTune
+summary(step.model$finalModel)
+```
+Still getting just the one variable model with only temp
 
 
-
-
-
-
-
-
-
+```{r}
+summary(lm(area ~ temp*day_sat, newdata))
+```
 
 
 

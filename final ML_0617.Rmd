@@ -1,0 +1,176 @@
+---
+title: "final ML"
+author: "Zac Macintyre"
+date: "6/9/2021"
+output: pdf_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+```{r}
+library(boot)
+library(mltools)
+library(data.table)
+library(psych)
+library(glmnet)
+fires = read.csv("ForestFires.csv")
+head(fires)
+```
+
+```{r}
+
+colSums(is.na(fires))
+
+```
+As we said in the presentation there is no missing values just doing a little check
+
+# This section is me doing some initial data visualization and some data analysis
+
+```{r}
+barplot(table(fires$month))
+barplot(table(fires$day))
+```
+```{r}
+summary(fires)
+```
+
+```{r}
+par(mfrow=c(2,2))
+plot(fires$rain, fires$area)
+plot(fires$temp, fires$area)
+plot(fires$FFMC, fires$area)
+plot(fires$DMC, fires$area)
+```
+```{r}
+par(mfrow=c(2,2))
+plot(fires$DC, fires$area)
+plot(fires$ISI, fires$area)
+plot(fires$wind, fires$area)
+plot(fires$RH, fires$area)
+```
+
+Some summary statistics
+```{r}
+summary(fires)
+describe(fires)
+```
+
+Correlation
+```{r}
+fires_matirx = fires[,-c(3,4)]
+corelation_m = cor(fires_matirx, use='pairwise.complete.obs')
+lower = lower.tri(fires_matirx)
+corelation_m
+hist(corelation_m[lower], xlab = 'correlations of lower matrix')
+```
+
+# In this section I will start actually looking into some regression settings
+
+As suggested in Cortez and Morais (2007), transforming area to log(area+1) can correct area's skewness toward zero
+
+```{r}
+log_fires = fires
+log_fires$log_area = log(log_fires$area +1)
+log_fires = log_fires[, -c(13)]
+```
+
+
+This is for fires not using X,Y,Day,Month
+```{r}
+fires_lm = log_fires[,-c(1,2,3,4)]
+#head(log_fires_lm)
+#fitting the most generic model
+set.seed(1)
+test = sample(nrow(fires_lm), floor(nrow(fires_lm)*.2))
+linear_fit = lm(log_area~., data = fires_lm[-test,])
+summary(linear_fit)
+
+# getting MSE for the test
+pred = predict(linear_fit, fires_lm[test,])
+mean((pred - fires_lm[test, "log_area"])**2)
+
+```
+
+This is for fires not using Day,Month
+```{r}
+fires_lm = log_fires[,-c(3,4)]
+#head(fires_lm)
+#fitting the most generic model
+test = sample(nrow(fires_lm), floor(nrow(fires_lm)*.2))
+linear_fit = lm(log_area~., data = fires_lm[-test,])
+summary(linear_fit)
+
+
+# getting MSE for the test
+pred = predict(linear_fit, fires_lm[test,])
+mean((pred - fires_lm[test, "log_area"])**2)
+```
+
+
+```{r}
+fires$month = as.factor(log_fires$month)
+fires$day = as.factor(log_fires$day)
+newdata = one_hot(as.data.table(log_fires))
+newdata
+```
+
+```{r}
+test = sample(nrow(fires_lm), floor(nrow(fires_lm)*.2))
+linear_fit = lm(log_area~., data = newdata[-test,])
+summary(linear_fit)
+
+
+# getting MSE for the test
+pred = predict(linear_fit, newdata[test,])
+mean((pred - fires_lm[test, "area"])**2)
+```
+
+# Lasso
+```{r}
+grid=10^seq(10,-2,length=100)
+lasso_mod = glmnet(x = as.matrix(newdata[-test, -"log_area"]), y = as.matrix(newdata[-test, log_area]), alpha=1, lambda = grid)
+plot(lasso_mod)
+
+# cross validation
+cv_lasso = cv.glmnet(x = as.matrix(newdata[-test, -"log_area"]), y = as.matrix(newdata[-test, log_area]), alpha=1)
+plot(cv_lasso)
+
+bestlam = cv_lasso$lambda.min
+lasso_pred=predict(lasso_mod,s=bestlam, newx=as.matrix(newdata[-test, -"log_area"]))
+mean((lasso_pred-as.matrix(newdata[-test, log_area]))^2 - as.matrix(newdata[-test, log_area]))
+
+out=glmnet(as.matrix(newdata[, -"log_area"]), as.matrix(newdata[, log_area]), alpha=1,lambda=grid)
+lasso_coef=predict(out,type="coefficients",s=bestlam)
+lasso_coef
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

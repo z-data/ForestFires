@@ -349,3 +349,20 @@ head(labeled_data)
 summary(lm(log_area ~ as.factor(cluster), data = labeled_data))
 # not significant....
 ```
+
+Hierarchical clustering
+
+```{r}
+dist_mat <- dist(newdata_2, method = 'euclidean')
+hclust_avg <- hclust(dist_mat, method = 'average')
+plot(hclust_avg)
+cut <- cutree(hclust_avg, k = 3)
+labeled_data = cbind(newdata_2, cluster = cut)
+summary(lm(log_area ~ as.factor(cluster), data = labeled_data))
+
+# again not very significant. What about k=5? 
+cut <- cutree(hclust_avg, k = 5)
+labeled_data = cbind(newdata_2, cluster = cut)
+summary(lm(log_area ~ as.factor(cluster), data = labeled_data))
+# it's worse
+```

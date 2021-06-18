@@ -366,3 +366,25 @@ labeled_data = cbind(newdata_2, cluster = cut)
 summary(lm(log_area ~ as.factor(cluster), data = labeled_data))
 # it's worse
 ```
+
+# Classification
+```{r}
+median(log_fires$log_area) #values below this are considered small fires
+bi_fires <- log_fires
+bi_fires$large_fire <- ifelse(bi_fires$log_area < median(log_fires$log_area), 0, 1)
+fires_lm <- bi_fires[, -c(3,4,13)]
+
+# Logit
+set.seed(123)
+test = sample(nrow(fires_lm), floor(nrow(fires_lm)*.2))
+logit_fit <- glm(large_fire ~ ., data = fires_lm[-test, ], family = "binomial")
+summary(logit_fit)
+
+#10 CV validation for the training set 
+cv.glm(fires_lm[-test,], logit_fit, K = 10)$delta[1]
+
+# getting MSE for the test
+pred = predict(logit_fit, fires_lm[test,])
+mean((pred - fires_lm[test, "large_fire"])**2)
+```
+

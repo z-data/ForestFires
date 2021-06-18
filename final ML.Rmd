@@ -20,6 +20,8 @@ library(glmnet)
 library(tidyverse)
 library(caret)
 library(leaps)
+library(factoextra)
+library(cluster)
 fires = read.csv("ForestFires.csv")
 head(fires)
 ```
@@ -317,3 +319,33 @@ lasso_coef=predict(out,type="coefficients",s=bestlam)
 lasso_coef
 ```
 
+# Clustering methods
+
+k-medoid clustering
+```{r}
+pam(newdata_2, 2, metric = "euclidean", stand = TRUE)
+fviz_nbclust(newdata_2, pam, method = "wss")
+
+gap_stat <- clusGap(newdata_2, FUN = pam, K.max = 5,B = 50)
+fviz_gap_stat(gap_stat)
+
+# choosing 2 clusters seem fine?
+set.seed(1)
+kmed <- pam(newdata_2, k = 2)
+kmed
+fviz_cluster(kmed, data = newdata_2)
+
+# seem to be three clusters? redo with three clusters.
+pam(newdata_2, 2, metric = "euclidean", stand = TRUE)
+set.seed(1)
+kmed <- pam(newdata, k = 2)
+kmed
+fviz_cluster(kmed, newdata_2)
+
+# combine clusters into the dataset
+labeled_data = cbind(newdata_2, cluster = kmed$cluster)
+head(labeled_data)
+
+summary(lm(log_area ~ as.factor(cluster), data = labeled_data))
+# not significant....
+```

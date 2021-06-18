@@ -27,12 +27,23 @@ colSums(is.na(fires))
 ```
 As we said in the presentation there is no missing values just doing a little check
 
-# This section is me doing some initial data visualization and somre data analysis
+As suggested in Cortez and Morais (2007), transforming area to log(area+1) can correct area's skewness toward zero
+```{r}
+log_fires = fires
+log_fires$log_area = log(log_fires$area +1)
+log_fires = log_fires[, -c(13)]
+```
 
+# This section is me doing some initial data visualization and somre data analysis
 ```{r}
 barplot(table(fires$month))
 barplot(table(fires$day))
 ```
+```{r}
+hist(log_fires$log_area)
+```
+
+
 ```{r}
 summary(fires)
 ```
@@ -58,13 +69,6 @@ corelation_m = cor(fires_matirx, use='pairwise.complete.obs')
 lower = lower.tri(fires_matirx)
 corelation_m
 hist(corelation_m[lower], xlab = 'correlations of lower matrix')
-```
-
-As suggested in Cortez and Morais (2007), transforming area to log(area+1) can correct area's skewness toward zero
-```{r}
-log_fires = fires
-log_fires$log_area = log(log_fires$area +1)
-log_fires = log_fires[, -c(13)]
 ```
 
 
@@ -228,6 +232,7 @@ lasso_coef=predict(out,type="coefficients",s=bestlam)
 lasso_coef
 ```
 This has been the best linear model that we have tried so far
+
 
 
 

@@ -11,8 +11,6 @@ editor_options:
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-
-
 ```{r}
 library(boot)
 library(mltools)
@@ -96,10 +94,12 @@ set.seed(1)
 test = sample(nrow(fires_lm), floor(nrow(fires_lm)*.2))
 linear_fit = lm(log_area~., data = fires_lm[-test,])
 summary(linear_fit)
+# nothing significant
 
 # getting MSE for the test
 pred = predict(linear_fit, fires_lm[test,])
 mean((pred - fires_lm[test, "log_area"])**2)
+
 linear_fit = glm(log_area ~., data = fires_lm[-test,])
 summary(linear_fit)
 
@@ -112,7 +112,6 @@ mean((pred - fires_lm[test, "log_area"])**2)
 ```
 
 
-
 This is for fires not using Day,Month
 ```{r}
 fires_lm = log_fires[,-c(3,4)]
@@ -121,7 +120,7 @@ fires_lm = log_fires[,-c(3,4)]
 test = sample(nrow(fires_lm), floor(nrow(fires_lm)*.2))
 linear_fit = lm(log_area~., data = fires_lm[-test,])
 linear_fit = glm(log_area ~ ., data = fires_lm[-test,])
-summary(linear_fit)
+summary(linear_fit) # wind significant
 
 #10 CV validation for the training set 
 cv.glm(fires_lm[-test,], linear_fit, K = 10)$delta[1]
@@ -143,7 +142,7 @@ newdata
 ```{r}
 test = sample(nrow(fires_lm), floor(nrow(fires_lm)*.2))
 linear_fit = glm(log_area~., data = newdata[-test,])
-summary(linear_fit)
+summary(linear_fit) # month_dec significant, but only 9 instances
 
 #10 CV validation for the training set 
 cv.glm(fires_lm[-test,], linear_fit, K = 10)$delta[1]
@@ -202,6 +201,7 @@ Backwards selection choose the model with 11 variables
 ```{r}
 
 linear_fit = glm(log_area~X+month_aug+month_dec+month_jul+month_jun+month_mar+DMC+temp+wind, data = newdata[-test,])
+summary(linear_fit)
 
 # getting MSE for the test
 pred = predict(linear_fit, newdata[test,])
@@ -224,7 +224,7 @@ step.model$results
 step.model$bestTune
 summary(step.model$finalModel)
 ```
-Still getting just the one variable model with only month_dec
+Still getting just the one variable model with only month_dec 
 
 I would like to explore some interaction terms and maybe investigating more into the correlated variables 
 ```{r}
@@ -250,31 +250,70 @@ out=glmnet(as.matrix(newdata[, -"log_area"]), as.matrix(newdata[, log_area]), al
 lasso_coef=predict(out,type="coefficients",s=bestlam)
 lasso_coef
 ```
-This has been the best linear model that we have tried so far
 
-# Lasso
+# try different coding method
+As described in hw2 we can combine days to weekdays & weekend
+```{r}
+newcodingdat <- log_fires
+newcodingdat$weekend <- ifelse(newcodingdat$day == "sat" | 
+                              newcodingdat$day == "sun", 1, 0)
+fires_lm = newcodingdat[,-c(3,4)]
+#head(fires_lm)
+#fitting the most generic model
+test = sample(nrow(fires_lm), floor(nrow(fires_lm)*.2))
+linear_fit = lm(log_area~., data = fires_lm[-test,])
+summary(linear_fit)
+
+linear_fit = glm(log_area ~ ., data = fires_lm[-test,])
+
+#10 CV validation for the training set 
+cv.glm(fires_lm[-test,], linear_fit, K = 10)$delta[1]
+
+# getting MSE for the test
+pred = predict(linear_fit, fires_lm[test,])
+mean((pred - fires_lm[test, "log_area"])**2)
+```
+
+coding seasons too
+```{r}
+newcodingdat$season <- newcodingdat$month
+newcodingdat$season<- recode(newcodingdat$season, jan = "winter", feb = "winter",
+       mar = "spring", apr = "spring", may = "spring",
+       jun = "summer", jul = "summer", aug = "summer",
+       sep = "fall", oct = "fall", nov = "fall",
+       dec = "winter")
+newdata_2 = one_hot(as.data.table(newcodingdat[, -c(3,4)]))
+fires_lm = newdata_2
+test = sample(nrow(fires_lm), floor(nrow(fires_lm)*.2))
+linear_fit = lm(log_area~., data = newdata_2[-test,])
+summary(linear_fit) # this one seem to be better(?) 
+
+linear_fit = glm(log_area ~ ., data = fires_lm[-test,])
+
+#10 CV validation for the training set 
+cv.glm(fires_lm[-test,], linear_fit, K = 10)$delta[1]
+
+# getting MSE for the test
+pred = predict(linear_fit, fires_lm[test,])
+mean((pred - fires_lm[test, "log_area"])**2)
+```
+
+Lasso after new coding
+
 ```{r}
 grid=10^seq(10,-2,length=100)
-lasso_mod = glmnet(x = as.matrix(newdata[-test, -"log_area"]), y = as.matrix(newdata[-test, log_area]), alpha=1, lambda = grid)
+lasso_mod = glmnet(x = as.matrix(newdata_2[-test, -"log_area"]), y = as.matrix(newdata_2[-test, log_area]), alpha=1, lambda = grid)
 plot(lasso_mod)
 
 # cross validation
-cv_lasso = cv.glmnet(x = as.matrix(newdata[-test, -"log_area"]), y = as.matrix(newdata[-test, log_area]), alpha=1)
+cv_lasso = cv.glmnet(x = as.matrix(newdata_2[-test, -"log_area"]), y = as.matrix(newdata_2[-test, log_area]), alpha=1)
 plot(cv_lasso)
-
 bestlam = cv_lasso$lambda.min
-lasso_pred=predict(lasso_mod,s=bestlam, newx=as.matrix(newdata[-test, -"log_area"]))
-mean((lasso_pred-as.matrix(newdata[-test, log_area]))^2 - as.matrix(newdata[-test, log_area]))
+lasso_pred=predict(lasso_mod,s=bestlam, newx=as.matrix(newdata_2[-test, -"log_area"]))
+mean((lasso_pred-as.matrix(newdata_2[-test, log_area]))^2 - as.matrix(newdata_2[-test, log_area]))
 
-out=glmnet(as.matrix(newdata[, -"log_area"]), as.matrix(newdata[, log_area]), alpha=1,lambda=grid)
+out=glmnet(as.matrix(newdata_2[, -"log_area"]), as.matrix(newdata_2[, log_area]), alpha=1,lambda=grid)
 lasso_coef=predict(out,type="coefficients",s=bestlam)
 lasso_coef
 ```
-
-
-
-
-
-
-
 

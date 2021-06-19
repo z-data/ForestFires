@@ -4,7 +4,7 @@ author: "Zac Macintyre"
 date: "6/9/2021"
 output: pdf_document
 editor_options: 
-  chunk_output_type: console
+  chunk_output_type: inline
 ---
 
 ```{r setup, include=FALSE}
@@ -22,7 +22,7 @@ library(caret)
 library(leaps)
 library(factoextra)
 library(cluster)
-fires = read.csv("ForestFires.csv")
+fires = read.csv("forestfires.csv")
 head(fires)
 ```
 
@@ -42,11 +42,11 @@ log_fires = log_fires[, -c(13)]
 
 # This section is me doing some initial data visualization and somre data analysis
 ```{r}
-barplot(table(fires$month))
+barplot(table(fires$month), ylab = "Frequency", main = "FRequency of Forest Fires per Month")
 barplot(table(fires$day))
 ```
 ```{r}
-hist(log_fires$log_area)
+hist(log_fires$log_area, xlab = "Log Area of Damage (Hecters)", main = "Histogram of Log Area Damage")
 ```
 
 
@@ -74,6 +74,7 @@ Some summary statistics
 summary(fires)
 describe(fires)
 ```
+
 
 Correlation
 ```{r}
@@ -119,7 +120,6 @@ This is for fires not using Day,Month
 fires_lm = log_fires[,-c(3,4)]
 #head(fires_lm)
 #fitting the most generic model
-test = sample(nrow(fires_lm), floor(nrow(fires_lm)*.2))
 linear_fit = lm(log_area~., data = fires_lm[-test,])
 linear_fit = glm(log_area ~ ., data = fires_lm[-test,])
 summary(linear_fit) # wind significant
@@ -142,7 +142,6 @@ newdata
 ```
 
 ```{r}
-test = sample(nrow(fires_lm), floor(nrow(fires_lm)*.2))
 linear_fit = glm(log_area~., data = newdata[-test,])
 summary(linear_fit) # month_dec significant, but only 9 instances
 
@@ -174,7 +173,7 @@ summary(step.model$finalModel)
 
 Using the above forward selection method we got that temp was the best forward selection model.  Here is code of us actually checking the MSE for temp
 ```{r}
-linear_fit = glm(log_area~month_dec, data = newdata[-test,])
+linear_fit = glm(log_area~month_dec + temp, data = newdata[-test,])
 
 # getting MSE for the test
 pred = predict(linear_fit, newdata[test,])
@@ -199,10 +198,9 @@ step.model$bestTune
 summary(step.model$finalModel)
 ```
 
-Backwards selection choose the model with 11 variables 
+Backwards selection choose the model with 1 variables - month dec
 ```{r}
-
-linear_fit = glm(log_area~X+month_aug+month_dec+month_jul+month_jun+month_mar+DMC+temp+wind, data = newdata[-test,])
+linear_fit = glm(log_area~month_dec, data = newdata[-test,])
 summary(linear_fit)
 
 # getting MSE for the test
@@ -226,7 +224,8 @@ step.model$results
 step.model$bestTune
 summary(step.model$finalModel)
 ```
-Still getting just the one variable model with only month_dec 
+We get out the 2 variable model with month_dec and temp, just like forward selection. 
+
 
 I would like to explore some interaction terms and maybe investigating more into the correlated variables 
 ```{r}
@@ -262,7 +261,6 @@ newcodingdat$weekend <- ifelse(newcodingdat$day == "sat" |
 fires_lm = newcodingdat[,-c(3,4)]
 #head(fires_lm)
 #fitting the most generic model
-test = sample(nrow(fires_lm), floor(nrow(fires_lm)*.2))
 linear_fit = lm(log_area~., data = fires_lm[-test,])
 summary(linear_fit)
 
@@ -286,7 +284,6 @@ newcodingdat$season<- recode(newcodingdat$season, jan = "winter", feb = "winter"
        dec = "winter")
 newdata_2 = one_hot(as.data.table(newcodingdat[, -c(3,4)]))
 fires_lm = newdata_2
-test = sample(nrow(fires_lm), floor(nrow(fires_lm)*.2))
 linear_fit = lm(log_area~., data = newdata_2[-test,])
 summary(linear_fit) # this one seem to be better(?) 
 
@@ -297,6 +294,7 @@ cv.glm(fires_lm[-test,], linear_fit, K = 10)$delta[1]
 
 # getting MSE for the test
 pred = predict(linear_fit, fires_lm[test,])
+sum((pred - fires_lm[test, "log_area"])**2)/103
 mean((pred - fires_lm[test, "log_area"])**2)
 ```
 
@@ -386,5 +384,56 @@ cv.glm(fires_lm[-test,], logit_fit, K = 10)$delta[1]
 # getting MSE for the test
 pred = predict(logit_fit, fires_lm[test,])
 mean((pred - fires_lm[test, "large_fire"])**2)
+```
+
+```{r}
+.88 / (max(fires_lm$log_area) - min(fires_lm$log_area))
+
+table(fires$month)
+```
+
+
+Splitting the data and seeing what happens 
+```{r}
+log_fires = fires
+log_fires$log_area = log(log_fires$area +1)
+fires = log_fires[, -c(13)]
+fires_with = fires[fires$log_area > 0, ]
+fires_without = fires[fires$log_area == 0, ]
+```
+
+
+```{r}
+barplot(table(fires_with$month), ylab = "Frequency", main = "Frequency of Forest Fires per Month with damage")
+barplot(table(fires_without$month), ylab = "Frequency", main = "FRequency of Forest Fires per Month")
+```
+
+```{r}
+hist(fires_with$rain,  main = "with damage")
+hist(fires_without$rain, main = "without")
+```
+```{r}
+hist(fires_with$temp,  main = "with damage")
+hist(fires_without$temp, main = "without")
+
+mean(fires_with$temp)
+mean(fires_without$temp)
+```
+```{r}
+barplot(table(fires_with$X))
+barplot(table(fires_without$X))
+
+table(fires_with$X)
+table(fires_without$X)
+```
+```{r}
+barplot(table(fires_with$Y))
+barplot(table(fires_without$Y))
+
+table(fires_with$Y, fires_with$X)
+table(fires_without$Y, fires_without$Y)
+```
+```{r}
+table(fires_with[fires_with$Y == 4, "X"])
 ```
 

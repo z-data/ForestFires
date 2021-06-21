@@ -1,10 +1,10 @@
 ---
-title: "final ML"
-author: "Zac Macintyre"
-date: "6/9/2021"
+title: "Analyzing and Predicting Forest Fires in the Montesinho Natural Park"
+author: "Group 5: Zac Macintyre and Charlotte Wang"
+date: "6/21/2021"
 output: pdf_document
 editor_options: 
-  chunk_output_type: inline
+  chunk_output_type: console
 ---
 
 ```{r setup, include=FALSE}
@@ -22,7 +22,7 @@ library(caret)
 library(leaps)
 library(factoextra)
 library(cluster)
-fires = read.csv("forestfires.csv")
+fires = read.csv("ForestFires.csv")
 head(fires)
 ```
 
@@ -31,18 +31,18 @@ colSums(is.na(fires))
 ```
 As we said in the presentation there is no missing values just doing a little check
 
-# This section is me doing some initial data visualization and some data analysis
+# This section is some initial data visualization and some data analysis
 
 As suggested in Cortez and Morais (2007), transforming area to log(area+1) can correct area's skewness toward zero
+
 ```{r}
 log_fires = fires
 log_fires$log_area = log(log_fires$area +1)
 log_fires = log_fires[, -c(13)]
 ```
 
-# This section is me doing some initial data visualization and somre data analysis
 ```{r}
-barplot(table(fires$month), ylab = "Frequency", main = "FRequency of Forest Fires per Month")
+barplot(table(fires$month), ylab = "Frequency", main = "Frequency of Forest Fires per Month")
 barplot(table(fires$day))
 ```
 ```{r}
@@ -72,9 +72,10 @@ plot(fires$RH, fires$area)
 Some summary statistics
 ```{r}
 summary(fires)
-describe(fires)
+describe(fires, skew = FALSE, omit = TRUE)
+table(fires$month)
+table(fires$day)
 ```
-
 
 Correlation
 ```{r}
@@ -84,8 +85,6 @@ lower = lower.tri(fires_matirx)
 corelation_m
 hist(corelation_m[lower], xlab = 'correlations of lower matrix')
 ```
-
-
 
 This is for fires not using X,Y,Day,Month
 ```{r}
@@ -114,9 +113,11 @@ pred = predict(linear_fit, fires_lm[test,])
 mean((pred - fires_lm[test, "log_area"])**2)
 ```
 
-
 This is for fires not using Day,Month
 ```{r}
+fires_lm = log_fires[,-c(3,4)]
+#head(fires_lm)
+#fitting the most generic model
 fires_lm = log_fires[,-c(3,4)]
 #head(fires_lm)
 #fitting the most generic model
@@ -131,7 +132,6 @@ cv.glm(fires_lm[-test,], linear_fit, K = 10)$delta[1]
 pred = predict(linear_fit, fires_lm[test,])
 mean((pred - fires_lm[test, "log_area"])**2)
 ```
-
 
 ```{r}
 log_fires$month = as.factor(log_fires$month)
@@ -173,7 +173,7 @@ summary(step.model$finalModel)
 
 Using the above forward selection method we got that temp was the best forward selection model.  Here is code of us actually checking the MSE for temp
 ```{r}
-linear_fit = glm(log_area~month_dec + temp, data = newdata[-test,])
+linear_fit = glm(log_area~month_dec, data = newdata[-test,])
 
 # getting MSE for the test
 pred = predict(linear_fit, newdata[test,])
@@ -231,8 +231,6 @@ I would like to explore some interaction terms and maybe investigating more into
 ```{r}
 summary(lm(log_area ~ temp*day_sat, newdata))
 ```
-
-
 
 # Lasso
 ```{r}
@@ -317,123 +315,201 @@ lasso_coef=predict(out,type="coefficients",s=bestlam)
 lasso_coef
 ```
 
-# Clustering methods
-
-k-medoid clustering
-```{r}
-pam(newdata_2, 2, metric = "euclidean", stand = TRUE)
-fviz_nbclust(newdata_2, pam, method = "wss")
-
-gap_stat <- clusGap(newdata_2, FUN = pam, K.max = 5,B = 50)
-fviz_gap_stat(gap_stat)
-
-# choosing 2 clusters seem fine?
-set.seed(1)
-kmed <- pam(newdata_2, k = 2)
-kmed
-fviz_cluster(kmed, data = newdata_2)
-
-# seem to be three clusters? redo with three clusters.
-pam(newdata_2, 2, metric = "euclidean", stand = TRUE)
-set.seed(1)
-kmed <- pam(newdata, k = 2)
-kmed
-fviz_cluster(kmed, newdata_2)
-
-# combine clusters into the dataset
-labeled_data = cbind(newdata_2, cluster = kmed$cluster)
-head(labeled_data)
-
-summary(lm(log_area ~ as.factor(cluster), data = labeled_data))
-# not significant....
-```
-
-Hierarchical clustering
-
-```{r}
-dist_mat <- dist(newdata_2, method = 'euclidean')
-hclust_avg <- hclust(dist_mat, method = 'average')
-plot(hclust_avg)
-cut <- cutree(hclust_avg, k = 3)
-labeled_data = cbind(newdata_2, cluster = cut)
-summary(lm(log_area ~ as.factor(cluster), data = labeled_data))
-
-# again not very significant. What about k=5? 
-cut <- cutree(hclust_avg, k = 5)
-labeled_data = cbind(newdata_2, cluster = cut)
-summary(lm(log_area ~ as.factor(cluster), data = labeled_data))
-# it's worse
-```
 
 # Classification
 ```{r}
 median(log_fires$log_area) #values below this are considered small fires
 bi_fires <- log_fires
 bi_fires$large_fire <- ifelse(bi_fires$log_area < median(log_fires$log_area), 0, 1)
+fires_lm <- bi_fires[, -c(1,2,3,4,13)]
+
+# Logit
+set.seed(1)
+test = sample(nrow(fires_lm), floor(nrow(fires_lm)*.2))
+
+# train the model on training set
+train_control <- trainControl(method = "cv", number = 10)
+
+logit_fit <- train(as.factor(large_fire) ~ .,
+               data = fires_lm[-test, ],
+               trControl = train_control,
+               method = "glm",
+               family=binomial())
+summary(logit_fit)
+
+prob = predict(logit_fit, fires_lm[test,], type = "prob")
+pred=rep(0, 517)
+pred[prob >0.5]=1
+table(pred,as.factor(fires_lm$large_fire))
+
+```
+Adding location variable
+
+```{r}
+
 fires_lm <- bi_fires[, -c(3,4,13)]
 
 # Logit
-set.seed(123)
+set.seed(1)
 test = sample(nrow(fires_lm), floor(nrow(fires_lm)*.2))
-logit_fit <- glm(large_fire ~ ., data = fires_lm[-test, ], family = "binomial")
+
+# train the model on training set
+train_control <- trainControl(method = "cv", number = 10)
+
+logit_fit <- train(as.factor(large_fire) ~ .,
+               data = fires_lm[-test, ],
+               trControl = train_control,
+               method = "glm",
+               family=binomial())
 summary(logit_fit)
 
-#10 CV validation for the training set 
-cv.glm(fires_lm[-test,], logit_fit, K = 10)$delta[1]
+prob = predict(logit_fit, fires_lm[test,], type = "prob")
+pred=rep(0, 517)
+pred[prob >0.5]=1
+table(pred,as.factor(fires_lm$large_fire))
 
-# getting MSE for the test
-pred = predict(logit_fit, fires_lm[test,])
-mean((pred - fires_lm[test, "large_fire"])**2)
 ```
+All variables
 
 ```{r}
-.88 / (max(fires_lm$log_area) - min(fires_lm$log_area))
+fires_lm <- one_hot(as.data.table(bi_fires))
+fires_lm <- fires_lm[, -c(30)]
+# Logit
+set.seed(1)
+test = sample(nrow(fires_lm), floor(nrow(fires_lm)*.2))
 
-table(fires$month)
+# train the model on training set
+train_control <- trainControl(method = "cv", number = 10)
+
+logit_fit <- train(as.factor(large_fire) ~ .,
+               data = fires_lm[-test, ],
+               trControl = train_control,
+               method = "glm",
+               family=binomial())
+summary(logit_fit)
+
+prob = predict(logit_fit, fires_lm[test,], type = "prob")
+pred=rep(0, 517)
+pred[prob >0.5]=1
+table(pred,as.factor(fires_lm$large_fire))
+
+
 ```
 
-
-Splitting the data and seeing what happens 
+Using weekday/weekend and seasons
 ```{r}
-log_fires = fires
-log_fires$log_area = log(log_fires$area +1)
-fires = log_fires[, -c(13)]
-fires_with = fires[fires$log_area > 0, ]
-fires_without = fires[fires$log_area == 0, ]
+fires_lm = newdata_2
+fires_lm$large_fire = ifelse(fires_lm$log_area < median(fires_lm$log_area), 0, 1)
+fires_lm = fires_lm[, -c(16)]
+
+set.seed(1)
+test = sample(nrow(fires_lm), floor(nrow(fires_lm)*.2))
+
+# train the model on training set
+train_control <- trainControl(method = "cv", number = 10)
+
+logit_fit <- train(as.factor(large_fire) ~ .,
+               data = fires_lm[-test, ],
+               trControl = train_control,
+               method = "glm",
+               family=binomial())
+summary(logit_fit)
+
+prob = predict(logit_fit, fires_lm[test,], type = "prob")
+pred=rep(0, 517)
+pred[prob >0.5]=1
+table(pred,as.factor(fires_lm$large_fire))
+
+
 ```
 
+
+# Clustering methods
+
+k-medoid clustering
+```{r}
+pam(newdata, 2, metric = "euclidean", stand = TRUE)
+fviz_nbclust(newdata, pam, method = "wss")
+# look at elbow --> three clusters
+
+# another approach
+gap_stat <- clusGap(newdata, FUN = pam, K.max = 15,B = 50)
+fviz_gap_stat(gap_stat)
+# k =14 -> no, overfit
+
+# choosing 3 clusters seem fine?
+set.seed(1)
+kmed <- pam(newdata, k = 3)
+kmed
+fviz_cluster(kmed, data = newdata)
+
+# combine clusters into the dataset
+labeled_data = cbind(newdata, cluster = kmed$cluster)
+head(labeled_data)
+
+summary(lm(log_area ~ as.factor(cluster), data = labeled_data))
+# significant....
+
+# Look into these clusters
+mod_cl1 <-lm(log_area ~ ., data = labeled_data[cluster == 1,-c(31)])
+summary(mod_cl1)
+mod_cl2 <-lm(log_area ~ ., data = labeled_data[cluster == 2,-c(31)])
+summary(mod_cl2)
+mod_cl3 <-lm(log_area ~ ., data = labeled_data[cluster == 3,-c(31)])
+summary(mod_cl3)
+```
+
+Try without qualitative variables?
 
 ```{r}
-barplot(table(fires_with$month), ylab = "Frequency", main = "Frequency of Forest Fires per Month with damage")
-barplot(table(fires_without$month), ylab = "Frequency", main = "FRequency of Forest Fires per Month")
+clusterdat <- as.data.frame(log_fires[, -c(3,4)])
+pam(clusterdat, 2, metric = "euclidean", stand = TRUE)
+fviz_nbclust(clusterdat, pam, method = "wss")
+# look at elbow --> three clusters
+
+# another approach
+gap_stat <- clusGap(clusterdat, FUN = pam, K.max = 15,B = 50)
+fviz_gap_stat(gap_stat)
+
+# choosing 3 clusters seem fine?
+set.seed(1)
+kmed <- pam(clusterdat, k = 3)
+kmed
+fviz_cluster(kmed, data = clusterdat)
+
+# combine clusters into the dataset
+labeled_data = cbind(clusterdat, cluster = kmed$cluster)
+head(labeled_data)
+
+summary(lm(log_area ~ as.factor(cluster), data = labeled_data))
+# significant....
+
+# Look into these clusters
+mod_cl1 <-lm(log_area ~ ., data = labeled_data %>% 
+               filter(cluster == 1) %>%
+               select(-c(12)))
+summary(mod_cl1)
+mod_cl2 <-lm(log_area ~ ., data = labeled_data %>% 
+               filter(cluster == 2) %>%
+               select(-c(12)))
+summary(mod_cl2)
+mod_cl3 <-lm(log_area ~ ., data = labeled_data %>% 
+               filter(cluster == 3) %>%
+               select(-c(12)))
+summary(mod_cl3)
+# Not as informative
 ```
 
-```{r}
-hist(fires_with$rain,  main = "with damage")
-hist(fires_without$rain, main = "without")
-```
-```{r}
-hist(fires_with$temp,  main = "with damage")
-hist(fires_without$temp, main = "without")
 
-mean(fires_with$temp)
-mean(fires_without$temp)
-```
-```{r}
-barplot(table(fires_with$X))
-barplot(table(fires_without$X))
+Hierarchical clustering
 
-table(fires_with$X)
-table(fires_without$X)
-```
 ```{r}
-barplot(table(fires_with$Y))
-barplot(table(fires_without$Y))
+dist_mat <- dist(newdata, method = 'euclidean')
+hclust_avg <- hclust(dist_mat, method = 'average')
+plot(hclust_avg)
+cut <- cutree(hclust_avg, k = 3)
+labeled_data = cbind(newdata, cluster = cut)
+summary(lm(log_area ~ as.factor(cluster), data = labeled_data))
 
-table(fires_with$Y, fires_with$X)
-table(fires_without$Y, fires_without$Y)
-```
-```{r}
-table(fires_with[fires_with$Y == 4, "X"])
-```
 
+```
